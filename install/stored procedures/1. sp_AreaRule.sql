@@ -1,5 +1,4 @@
 /****** StoredProcedure sp_AreaRule Script Date: 19-06-2017 08:40:37 ******/
-when running the 'sp_CalculateLayer' procedure (ie. table is generated the StrateGIS database way).
 
 SET ANSI_NULLS ON
 GO
@@ -14,6 +13,7 @@ GO
 -- The score is determined from the relative interesection of each grid cell multiplied with
 -- the specified weight (in percent).
 -- Please note, the feature calss is supposed to be in the table structure as generated,
+-- when running the 'sp_CalculateLayer' procedure (ie. table is generated the StrateGIS database way).
 CREATE PROCEDURE [dbo].[sp_AreaRule]
 	-- the weight of the rule
 	@FeatureClass nvarchar(30) = 'FeatureClass',
