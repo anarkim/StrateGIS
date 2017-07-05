@@ -62,6 +62,10 @@ BEGIN
 		-- get the row in the loop and add the records area to the resulting area
 		DECLARE @partialGeom geometry;
 		SET @partialGeom = (SELECT geom FROM #myTable WHERE ID = @counter);
+		
+		-- make @partialGeom valid
+		if @partialGeom.STIsValid() < 1
+			SET @partialGeom = @partialGeom.MakeValid()
 
 		SET @completearea = @completearea + @partialGeom.STArea()
 		SET @counter = @counter + 1

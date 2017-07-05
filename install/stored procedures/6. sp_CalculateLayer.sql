@@ -77,7 +77,7 @@ BEGIN
 	-- spatial geometry typ for layers
 	DECLARE @geomType nvarchar(30)
 	DECLARE @SQL_Get_geomtype_String NVARCHAR(MAX)
-	SET @SQL_Get_geomtype_String = 'select distinct @geomTypeOUT = geom.STGeometryType() from ' + @FeatureClassName + ' where geom.STGeometryType() is not null'
+	SET @SQL_Get_geomtype_String = 'select distinct @geomTypeOUT = geom.MakeValid().STGeometryType() from ' + @FeatureClassName + ' where geom.MakeValid().STGeometryType() is not null'
 	DECLARE @geomParmDefinition nvarchar(500);
 	SET @geomParmDefinition = '@geomTypeOUT nvarchar(30) OUTPUT';
 	-- execute the inline SQL statement

@@ -40,6 +40,10 @@ BEGIN
 	-- execute the inline SQL statement, resulting geometry is stored in @inputGeometry parameter
 	EXECUTE sp_executesql @findgeom_statement, @findgeom_param_def, @FeatureIdFieldValueIn = @FeatureIdFieldValue, @inputGeometryOut = @inputGeometry OUTPUT;
 
+	-- make geometry valid
+	if @inputGeometry.STIsValid() < 1
+		SET @inputGeometry = @inputGeometry.MakeValid()
+
 	-- drop previous temp table, if any
 	IF OBJECT_ID('tempdb..#tmpSquarenetIntersect') IS NOT NULL
 		DROP TABLE #tmpSquarenetIntersect
@@ -47,7 +51,7 @@ BEGIN
 	-- create temp table for holding intersecting geometries from squarenet
 	CREATE TABLE #tmpSquarenetIntersect(id int identity, geom geometry, squareId varchar(30));
 	-- insert intersecting features
-	INSERT INTO #tmpSquarenetIntersect select geom, square_id from square_grid WHERE geom.STIntersects(@inputGeometry) <> 0
+	INSERT INTO #tmpSquarenetIntersect select geom, square_id from square_grid WITH (INDEX(square_grid_spatial_index)) WHERE geom.STIntersects(@inputGeometry) = 1
 	
 	-- Determine number of intersection square features
 	-- create inline SQL statement
