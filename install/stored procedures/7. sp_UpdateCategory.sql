@@ -55,7 +55,8 @@ BEGIN
    EXEC (@SQLDeleteCreateString)
 
 
-		-- drop previous temp table, if any
+
+   		-- drop previous temp table, if any
 	IF OBJECT_ID('tempdb..#tmpcategorylayers') IS NOT NULL
 		DROP TABLE #tmpcategorylayers
 
@@ -74,85 +75,45 @@ BEGIN
 	SELECT @max = COUNT(id) FROM #categoryTemp
 	DECLARE @counter int = 1;
 
-
 	-- Loop through each featurelayer in order to update complete category
 	WHILE @counter <= @max
 		BEGIN
 			DECLARE @theLayer varchar(30)
 			SELECT @theLayer = output_layer_name FROM #categoryTemp WHERE id = @counter
 
-
-			-- drop previous temp table, if any
-			IF OBJECT_ID('tempdb..#SquaresTemp') IS NOT NULL
-				DROP TABLE #SquaresTemp
-			-- loop through all squares in square_grid table
-			-- create temp table for holding intersecting geometries from squarenet
-			CREATE TABLE #SquaresTemp(id int identity, square_id varchar(30));
-
-			-- Determine number of iterations in subsequent while loop
-			DECLARE @LoopCount int = 0;
-			DECLARE @SQLLoopCounter nvarchar(max) = 'INSERT INTO #SquaresTemp SELECT square_id FROM ' + @theLayer + ' GROUP BY square_id'
-			-- execute the inline SQL statement, result is stored in tem table
-			exec sp_executesql @SQLLoopCounter;
-
-
-			DECLARE @squaremax int = 1;
-			SELECT @squaremax = COUNT(id) FROM #SquaresTemp
-
-
-			-- Loop through each square to determine sum of areas
-			DECLARE @squarecounter int = 1;
-			WHILE @squarecounter <= @squaremax
+			-- create insert/update staement, using join expression from featurelayers square_id
+			DECLARE @SQLInsertUpdateCategory NVARCHAR(MAX)
+			SET @SQLInsertUpdateCategory = 'WITH CTE AS
+				(
+					SELECT square_id, ISNULL(SUM(area_overlap), 0) as f_area, ISNULL(SUM(feature_score), 0) as f_score
+					FROM ' + @theLayer + '
+					GROUP BY square_id
+				)
+				UPDATE ' + @Category_output_layer_name + '
+					SET category_area_overlap =  category_area_overlap + f_area,
+						category_score = category_score + f_score
+				FROM Jordforurening_Cat P
+				INNER JOIN CTE S ON S.square_id = P.square_id
+				IF @@ROWCOUNT=0
 				BEGIN
-
-					DECLARE @theSquareId nvarchar(30)
-					SELECT @theSquareId = square_id FROM #SquaresTemp WHERE id = @squarecounter
-					SET @theSquareId = '''' + @theSquareId + ''''
-
-					DECLARE @theSquareGeom geometry
-					DECLARE @theSquareGeomSQL nvarchar(max) = 'SELECT Top(1) @theSquareGeomOut = geom FROM ' + @theLayer + ' WHERE square_id=' + @theSquareId
-					DECLARE @theSquareGeomSQLParmDefinition nvarchar(500);
-					SET @theSquareGeomSQLParmDefinition = '@theSquareGeomOut geometry OUTPUT';
-					-- execute the inline SQL statement, result is stored in tem table
-					exec sp_executesql @theSquareGeomSQL, @theSquareGeomSQLParmDefinition, @theSquareGeomOut = @theSquareGeom OUTPUT;
-
-					-- Determine number of intersection square features
-					-- create inline SQL statement
-					DECLARE @theSum float = 0; 
-					DECLARE @theScore float = 0; 
-					DECLARE @SQLKvadratMax nvarchar(max) = 'SELECT @theSumOut = ISNULL(SUM(area_overlap), 0), @theScoreOut = ISNULL(SUM(feature_score), 0) FROM ' + @theLayer + ' WHERE square_id=' + @theSquareId
-					DECLARE @MaxParmDefinition nvarchar(500);
-					SET @MaxParmDefinition = '@theSumOut float OUTPUT, @theScoreOut float OUTPUT';
-					-- execute the inline SQL statement, result is stored in tem table
-					exec sp_executesql @SQLKvadratMax, @MaxParmDefinition, @theSumOut = @theSum OUTPUT, @theScoreOut = @theScore OUTPUT;
-					
-				    IF(@theSum > 0)
-						BEGIN
-							-- update or insert area
-							DECLARE @SQLUpdateInsert nvarchar(max);
-							SET @SQLUpdateInsert = 'UPDATE ' + @Category_output_layer_name + ' SET category_area_overlap=category_area_overlap + @theSumIn, category_score=category_score + @theScoreIn
-														WHERE ' + @Category_output_layer_name + '.square_id=' + @theSquareId + '
-														IF @@ROWCOUNT=0 INSERT INTO ' + @Category_output_layer_name + '
-														(square_id, category_area_overlap, category_score, geom)
-														VALUES (' + @theSquareId + ', @theSumIn, @theScoreIn, @theSquareGeomIn)'
-							DECLARE @SQLUpdateInsertParmDefinition nvarchar(500);
-							SET @SQLUpdateInsertParmDefinition = '@theSumIn float, @theScoreIn float, @theSquareGeomIn geometry';
-							-- execute the inline SQL statement, result is stored in tem table
-							exec sp_executesql @SQLUpdateInsert, @SQLUpdateInsertParmDefinition, @theSumIn = @theSum, @theScoreIn = @theScore, @theSquareGeomIn = @theSquareGeom;
-						END					
-
-
-					SET @squarecounter = @squarecounter + 1
-				END
-				-- determine complete area for all featureclass features
-				DECLARE	@featureClassArea float = 0
-				EXEC	@featureClassArea = [dbo].[sp_DetermineLayerCompleteArea]
-						@TableName = @Category_output_layer_name,
-						@GeometryFieldName = 'geom'
-
+					INSERT INTO ' + @Category_output_layer_name + '
+					(square_id, category_area_overlap, category_score, geom)	
+					SELECT square_id, ISNULL(SUM(area_overlap), 0) as f_area, ISNULL(SUM(feature_score), 0) as f_score, geometry::STGeomFromText(''LINESTRING (100 100, 20 180, 180 180)'', 25832)
+						FROM ' + @theLayer + '
+						GROUP BY square_id
+					UPDATE ' + @Category_output_layer_name + ' SET ' + @Category_output_layer_name + '.geom =  S.geom
+					FROM ' + @Category_output_layer_name + ' P
+					INNER JOIN ' + @theLayer + ' S ON S.square_id = P.square_id 
+				END'
+			EXEC (@SQLInsertUpdateCategory)
 
 			SET @counter = @counter + 1
 		END
+	-- determine complete area for all featureclass features
+	DECLARE	@featureClassArea float = 0
+	EXEC	@featureClassArea = [dbo].[sp_DetermineLayerCompleteArea]
+		@TableName = @Category_output_layer_name,
+		@GeometryFieldName = 'geom'
 
 	-- update relative area calculations for complete category
 	DECLARE @SQLCalculateRelativeAreas nvarchar(max);
