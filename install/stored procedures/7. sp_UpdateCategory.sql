@@ -90,21 +90,36 @@ BEGIN
 					GROUP BY square_id
 				)
 				UPDATE ' + @Category_output_layer_name + '
-					SET category_area_overlap =  category_area_overlap + f_area,
-						category_score = category_score + f_score
-				FROM Jordforurening_Cat P
+					SET category_area_overlap += f_area,
+						category_score += f_score
+				FROM ' + @Category_output_layer_name + ' P
 				INNER JOIN CTE S ON S.square_id = P.square_id
 				IF @@ROWCOUNT=0
-				BEGIN
-					INSERT INTO ' + @Category_output_layer_name + '
-					(square_id, category_area_overlap, category_score, geom)	
-					SELECT square_id, ISNULL(SUM(area_overlap), 0) as f_area, ISNULL(SUM(feature_score), 0) as f_score, geometry::STGeomFromText(''LINESTRING (100 100, 20 180, 180 180)'', 25832)
-						FROM ' + @theLayer + '
-						GROUP BY square_id
-					UPDATE ' + @Category_output_layer_name + ' SET ' + @Category_output_layer_name + '.geom =  S.geom
-					FROM ' + @Category_output_layer_name + ' P
-					INNER JOIN ' + @theLayer + ' S ON S.square_id = P.square_id 
-				END'
+					BEGIN
+						INSERT INTO ' + @Category_output_layer_name + '
+						(square_id, category_area_overlap, category_score, geom)	
+						SELECT square_id, ISNULL(SUM(area_overlap), 0) as f_area, ISNULL(SUM(feature_score), 0) as f_score, geometry::STGeomFromText(''LINESTRING (100 100, 20 180, 180 180)'', 25832)
+							FROM ' + @theLayer + '
+							GROUP BY square_id
+						UPDATE P SET P.geom =  S.geom
+						FROM ' + @Category_output_layer_name + ' P
+						INNER JOIN ' + @theLayer + ' S ON S.square_id = P.square_id 
+					END
+				ELSE
+					BEGIN
+						INSERT INTO ' + @Category_output_layer_name + '
+						(square_id, category_area_overlap, category_score, geom)	
+							SELECT ' + @theLayer + '.square_id, ISNULL(SUM(area_overlap), 0) as f_area, ISNULL(SUM(feature_score), 0) as f_score, geometry::STGeomFromText(''LINESTRING (100 100, 20 180, 180 180)'', 25832)
+							FROM ' + @theLayer + '
+							LEFT JOIN ' + @Category_output_layer_name + ' ON ' + @Category_output_layer_name + '.square_id = ' + @theLayer + '.square_id
+							WHERE ' + @Category_output_layer_name + '.square_id is NULL
+							GROUP BY ' + @theLayer + '.square_id
+						UPDATE P SET P.geom =  S.geom
+						FROM ' + @Category_output_layer_name + ' P
+						INNER JOIN ' + @theLayer + ' S ON S.square_id = P.square_id 
+						
+
+					END'
 			EXEC (@SQLInsertUpdateCategory)
 
 			SET @counter = @counter + 1
